@@ -33,6 +33,10 @@ func (o *OpinionManager) Setup() {
 	o.tangle.Booker.Events.MessageBooked.Attach(events.NewClosure(o.FormOpinion))
 }
 
+func (o *OpinionManager) Set(col Color) {
+	o.ownOpinion = col
+}
+
 func (o *OpinionManager) FormOpinion(messageID MessageID) {
 	defer o.Events.OpinionFormed.Trigger(messageID)
 

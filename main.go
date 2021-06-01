@@ -12,8 +12,10 @@ import (
 )
 
 var log = logger.New("Simulation")
+var maxWeight int
+var leader multiverse.Color
 
-const nodesCount = 10000
+const nodesCount = 100
 
 func main() {
 	log.Info("Starting simulation ... [DONE]")
@@ -33,12 +35,21 @@ func main() {
 
 	time.Sleep(2 * time.Second)
 
-	attackers := testNetwork.RandomPeers(3)
-	sendMessage(attackers[0], multiverse.Red)
-	sendMessage(attackers[1], multiverse.Blue)
-	sendMessage(attackers[2], multiverse.Green)
-
-	time.Sleep(30 * time.Second)
+	attackers := testNetwork.RandomPeers(10)
+	var attacker *network.Peer
+	counter := 1
+	for {
+		for _, attacker = range attackers {
+			sendMessage(attacker, multiverse.Color(counter))
+			attacker.Node.(*multiverse.Node).Tangle.OpinionManager.Set(multiverse.Color(counter))
+		}
+		counter++
+		if counter > 3 {
+			counter = 1
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	//time.Sleep(30 * time.Second)
 }
 
 var (
@@ -52,32 +63,46 @@ var (
 )
 
 func monitorNetworkState(testNetwork *network.Network) {
+
+	//opinions = make(map[multiverse.Color]int)
+
 	opinions[multiverse.UndefinedColor] = nodesCount
 	opinions[multiverse.Blue] = 0
 	opinions[multiverse.Red] = 0
 	opinions[multiverse.Green] = 0
-
 	for _, peer := range testNetwork.Peers {
 		peer.Node.(*multiverse.Node).Tangle.OpinionManager.Events.OpinionChanged.Attach(events.NewClosure(func(oldOpinion multiverse.Color, newOpinion multiverse.Color) {
 			opinionMutex.Lock()
 			defer opinionMutex.Unlock()
-
+			//if _, ok := opinions[newOpinion]; ok {
 			opinions[oldOpinion]--
 			opinions[newOpinion]++
+			//} else {
+			//	opinions[oldOpinion]--
+			//	opinions[newOpinion] = 1
+			//}
+
 		}))
 	}
 
 	go func() {
 		for range time.Tick(1000 * time.Millisecond) {
-			log.Infof("Network Status: %d TPS :: Consensus[ %d Undefined / %d Blue / %d Red / %d Green ] :: %d Nodes :: %d Validators",
+			maxWeight = 0
+			leader = multiverse.UndefinedColor
+			for k := range opinions {
+				if opinions[k] > maxWeight {
+					maxWeight = opinions[k]
+					leader = k
+				}
+			}
+			log.Infof("Network Status: %d TPS :: Leader %d  : Votes for Leader %d  :: %d Nodes :: %d Validators",
 				atomic.LoadUint64(&tpsCounter),
-				opinions[multiverse.UndefinedColor],
-				opinions[multiverse.Blue],
-				opinions[multiverse.Red],
-				opinions[multiverse.Green],
+				leader,
+				maxWeight,
 				nodesCount,
 				relevantValidators,
 			)
+			log.Infof("Opinins:", opinions)
 
 			atomic.StoreUint64(&tpsCounter, 0)
 		}

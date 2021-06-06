@@ -36,7 +36,8 @@ func (n *Network) RandomPeers(count int) (randomPeers []*Peer) {
 	selectedPeers := set.New()
 	for len(randomPeers) < count {
 		if randomIndex := crypto.Randomness.Intn(len(n.Peers)); selectedPeers.Add(randomIndex) {
-			randomPeers = append(randomPeers, n.Peers[randomIndex])
+			randomPeers = unique(append(randomPeers, n.Peers[randomIndex]))
+
 		}
 	}
 
@@ -210,3 +211,15 @@ func WattsStrogatz(meanDegree int, randomness float64) PeeringStrategy {
 }
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func unique(Slice []*Peer) []*Peer {
+	keys := make(map[*Peer]bool)
+	list := []*Peer{}
+	for _, entry := range Slice {
+		if _, value := keys[entry]; !value {
+			keys[entry] = true
+			list = append(list, entry)
+		}
+	}
+	return list
+}

@@ -14,6 +14,7 @@ import (
 var log = logger.New("Simulation")
 var maxWeight int
 var leader multiverse.Color
+var oldOpinionAttacker multiverse.Color
 
 const nodesCount = 100
 
@@ -22,7 +23,7 @@ func main() {
 	defer log.Info("Shutting down simulation ... [DONE]")
 
 	testNetwork := network.New(
-		network.Nodes(nodesCount, multiverse.NewNode, network.ZIPFDistribution(0.9, 100000000)),
+		network.Nodes(nodesCount, multiverse.NewNode, network.ZIPFDistribution(0.8, 100000000)),
 		network.Delay(30*time.Millisecond, 250*time.Millisecond),
 		network.PacketLoss(0, 0.05),
 		network.Topology(network.WattsStrogatz(4, 1)),
@@ -30,23 +31,31 @@ func main() {
 	testNetwork.Start()
 	defer testNetwork.Shutdown()
 
+	attackers := testNetwork.RandomPeers(10)
+	var attacker *network.Peer
+	var attackersOpinions = make(map[*network.Peer]multiverse.Color)
+	for _, attacker = range attackers {
+		attackersOpinions[attacker] = multiverse.UndefinedColor
+	}
 	monitorNetworkState(testNetwork)
-	secureNetwork(testNetwork, 500*time.Millisecond)
+	secureNetwork(testNetwork, attackers, 500*time.Millisecond)
 
 	time.Sleep(2 * time.Second)
 
-	attackers := testNetwork.RandomPeers(10)
-	var attacker *network.Peer
 	counter := 1
 	for {
 		for _, attacker = range attackers {
-			sendMessage(attacker, multiverse.Color(counter))
+
+			oldOpinionAttacker = attacker.Node.(*multiverse.Node).Tangle.OpinionManager.Opinion()
 			attacker.Node.(*multiverse.Node).Tangle.OpinionManager.Set(multiverse.Color(counter))
+			attacker.Node.(*multiverse.Node).Tangle.OpinionManager.Events.OpinionChanged.Trigger(oldOpinionAttacker, multiverse.Color(counter))
+			sendMessage(attacker, multiverse.Color(counter))
 		}
 		counter++
-		if counter > 3 {
+		if counter > 3 { // comment out for increasing number of conflicts
 			counter = 1
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
 	//time.Sleep(30 * time.Second)
@@ -102,17 +111,20 @@ func monitorNetworkState(testNetwork *network.Network) {
 				nodesCount,
 				relevantValidators,
 			)
-			log.Infof("Opinins:", opinions)
-
+			//log.Infof("Opinion of node 1:", testNetwork.Peers[1].Node.(*multiverse.Node).Tangle.OpinionManager.Opinion())
+			//log.Infof("Opinions:", opinions)
 			atomic.StoreUint64(&tpsCounter, 0)
 		}
 	}()
 }
 
-func secureNetwork(testNetwork *network.Network, pace time.Duration) {
+func secureNetwork(testNetwork *network.Network, attackers []*network.Peer, pace time.Duration) {
 	largestWeight := float64(testNetwork.WeightDistribution.LargestWeight())
 
 	for _, peer := range testNetwork.Peers {
+		if !find(attackers, peer) {
+			continue
+		}
 		weightOfPeer := float64(testNetwork.WeightDistribution.Weight(peer.ID))
 		if 1000*weightOfPeer <= largestWeight {
 			continue
@@ -135,7 +147,17 @@ func sendMessage(peer *network.Peer, optionalColor ...multiverse.Color) {
 
 	if len(optionalColor) >= 1 {
 		peer.Node.(*multiverse.Node).IssuePayload(optionalColor[0])
+	} else {
+		peer.Node.(*multiverse.Node).IssuePayload(multiverse.UndefinedColor)
 	}
 
-	peer.Node.(*multiverse.Node).IssuePayload(multiverse.UndefinedColor)
+}
+
+func find(source []*network.Peer, value *network.Peer) bool {
+	for _, item := range source {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }

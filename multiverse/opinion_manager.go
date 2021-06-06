@@ -94,6 +94,18 @@ func (o *OpinionManager) weightsUpdated() {
 	}
 }
 
+func (o *OpinionManager) getHeaviest() (uint64, Color) {
+	maxApprovalWeight := uint64(0)
+	maxOpinion := UndefinedColor
+	for color, approvalWeight := range o.approvalWeights {
+		if approvalWeight > maxApprovalWeight || approvalWeight == maxApprovalWeight && color < maxOpinion {
+			maxApprovalWeight = approvalWeight
+			maxOpinion = color
+		}
+	}
+	return maxApprovalWeight, maxOpinion
+}
+
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // region Opinion //////////////////////////////////////////////////////////////////////////////////////////////////////
